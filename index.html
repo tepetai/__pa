@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Обработка конвертов</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --secondary: #64748b;
+            --bg-color: #f8fafc;
+            --text-color: #1e293b;
+            --border-color: #e2e8f0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .upload-section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            margin-bottom: 15px;
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        .file-input-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 15px;
+            background: var(--primary);
+            color: white;
+            border-radius: 8px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            text-align: center;
+        }
+
+        .file-input-label:hover {
+            background: var(--primary-hover);
+        }
+
+        .preview-section {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .image-preview {
+            position: relative;
+            width: 300px;
+            height: 300px;
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+            background: #f0f0f0;
+        }
+
+        .image-preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: white;
+        }
+
+        .image-controls {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .image-controls button {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 4px;
+            background: var(--primary);
+            color: white;
+            cursor: pointer;
+        }
+
+        .image-controls button:hover {
+            background: var(--primary-hover);
+        }
+
+        .processing-section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .selection-area {
+            position: absolute;
+            border: 2px solid var(--primary);
+            background: rgba(37, 99, 235, 0.1);
+            pointer-events: none;
+            display: none;
+        }
+
+        .image-container {
+            position: relative;
+            display: inline-block;
+            max-width: 100%;
+            margin-top: 20px;
+        }
+
+        #selection-image {
+            max-width: 100%;
+            display: block;
+            cursor: crosshair;
+        }
+
+        .processing-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .process-btn {
+            padding: 12px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .process-btn:hover {
+            background: var(--primary-hover);
+        }
+
+        .process-btn:disabled {
+            background: var(--secondary);
+            cursor: not-allowed;
+        }
+
+        .progress-info {
+            text-align: center;
+            font-size: 14px;
+            color: var(--secondary);
+        }
+
+        .results-section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .result-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .result-actions button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .copy-btn {
+            background: var(--primary);
+            color: white;
+        }
+
+        .copy-btn:hover {
+            background: var(--primary-hover);
+        }
+
+        .copy-excel-btn {
+            background: #10b981;
+            color: white;
+        }
+
+        .copy-excel-btn:hover {
+            background: #059669;
+        }
+
+        #results {
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px;
+            min-height: 200px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            background: #f9f9f9;
+        }
+
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            background: #f0f0f0;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        @media (max-width: 768px) {
+            .preview-section {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .image-preview {
+                width: 100%;
+                height: auto;
+                max-height: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Обработка конвертов</h1>
+        
+        <div class="upload-section">
+            <h2>Загрузите фотографии конвертов</h2>
+            <div class="file-input-wrapper">
+                <input type="file" id="file-input" accept="image/*" multiple>
+                <label for="file-input" class="file-input-label">Выберите файлы</label>
+            </div>
+            
+            <div class="preview-section" id="preview-section"></div>
+        </div>
+        
+        <div class="processing-section">
+            <h2>Обработка фотографий</h2>
+            <p>Выделите область с ФИО и адресом (первая строка - ФИО, остальные - адрес)</p>
+            
+            <div class="image-container" id="selection-container" style="display: none;">
+                <img id="selection-image" src="#" alt="Для выделения области">
+                <div class="selection-area" id="selection-area"></div>
+            </div>
+            
+            <div class="processing-controls">
+                <button id="process-btn" class="process-btn" disabled>Начать обработку</button>
+                <div class="progress-info" id="progress-info"></div>
+            </div>
+        </div>
+        
+        <div class="results-section">
+            <h2>Результаты</h2>
+            <div id="results"></div>
+            
+            <div class="result-actions">
+                <button id="copy-btn" class="copy-btn">Копировать текст</button>
+                <button id="copy-excel-btn" class="copy-excel-btn">Копировать для Excel</button>
+            </div>
+            
+            <div class="status" id="status">Готово к работе</div>
+        </div>
+    </div>
+
+    <script>
+        let worker = null;
+        let images = [];
+        let currentImageIndex = 0;
+        let selection = null;
+        let startX, startY;
+        let selecting = false;
+        let results = [];
+        let processing = false;
+        let imageScale = 1;
+
+        const fileInput = document.getElementById('file-input');
+        const previewSection = document.getElementById('preview-section');
+        const selectionContainer = document.getElementById('selection-container');
+        const selectionImage = document.getElementById('selection-image');
+        const selectionArea = document.getElementById('selection-area');
+        const processBtn = document.getElementById('process-btn');
+        const progressInfo = document.getElementById('progress-info');
+        const resultsDiv = document.getElementById('results');
+        const copyBtn = document.getElementById('copy-btn');
+        const copyExcelBtn = document.getElementById('copy-excel-btn');
+        const statusDiv = document.getElementById('status');
+
+        async function init() {
+            try {
+                statusDiv.textContent = 'Инициализация системы распознавания...';
+                
+                // Terminate any existing worker
+                if (worker) {
+                    await worker.terminate();
+                }
+                
+                // Initialize new worker
+                worker = await Tesseract.createWorker({
+                    logger: m => console.log(m),
+                    errorHandler: err => console.error(err)
+                });
+                
+                await worker.loadLanguage('rus');
+                await worker.initialize('rus');
+                
+                statusDiv.textContent = 'Готово к работе';
+                setupEventListeners();
+            } catch (error) {
+                console.error('Ошибка инициализации:', error);
+                statusDiv.textContent = 'Ошибка инициализации системы распознавания';
+                statusDiv.style.color = 'red';
+            }
+        }
+
+        function setupEventListeners() {
+            fileInput.addEventListener('change', handleFileSelect);
+            processBtn.addEventListener('click', startProcessing);
+            copyBtn.addEventListener('click', copyResults);
+            copyExcelBtn.addEventListener('click', copyResultsForExcel);
+        }
+
+        function handleFileSelect(e) {
+            const files = Array.from(e.target.files);
+            if (files.length === 0) return;
+            
+            images = [];
+            previewSection.innerHTML = '';
+            results = [];
+            resultsDiv.textContent = '';
+            statusDiv.textContent = `Загружено ${files.length} файлов`;
+            statusDiv.style.color = '';
+            
+            files.forEach((file, index) => {
+                if (!file.type.match('image.*')) {
+                    statusDiv.textContent = 'Пожалуйста, загружайте только изображения';
+                    statusDiv.style.color = 'red';
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const img = new Image();
+                    img.onload = function() {
+                        images.push({
+                            file,
+                            element: img,
+                            rotation: 0
+                        });
+                        
+                        createPreview(img, index);
+                        
+                        if (index === 0) {
+                            setupSelectionArea(img);
+                        }
+                    };
+                    img.onerror = function() {
+                        statusDiv.textContent = 'Ошибка загрузки изображения';
+                        statusDiv.style.color = 'red';
+                    };
+                    img.src = event.target.result;
+                };
+                reader.onerror = function() {
+                    statusDiv.textContent = 'Ошибка чтения файла';
+                    statusDiv.style.color = 'red';
+                };
+                reader.readAsDataURL(file);
+            });
+            
+            // Enable process button when files are loaded
+            processBtn.disabled = files.length === 0;
+        }
+
+        function createPreview(img, index) {
+            const preview = document.createElement('div');
+            preview.className = 'image-preview';
+            
+            const imgElement = document.createElement('img');
+            imgElement.src = img.src;
+            
+            const controls = document.createElement('div');
+            controls.className = 'image-controls';
+            
+            const rotateLeftBtn = document.createElement('button');
+            rotateLeftBtn.textContent = '↶';
+            rotateLeftBtn.onclick = () => rotateImage(index, -90);
+            
+            const rotateRightBtn = document.createElement('button');
+            rotateRightBtn.textContent = '↷';
+            rotateRightBtn.onclick = () => rotateImage(index, 90);
+            
+            controls.appendChild(rotateLeftBtn);
+            controls.appendChild(rotateRightBtn);
+            
+            preview.appendChild(imgElement);
+            preview.appendChild(controls);
+            previewSection.appendChild(preview);
+        }
+
+        function rotateImage(index, degrees) {
+            images[index].rotation = (images[index].rotation + degrees) % 360;
+            const preview = previewSection.children[index];
+            const img = preview.querySelector('img');
+            
+            img.style.transform = `rotate(${images[index].rotation}deg)`;
+            
+            if (index === currentImageIndex) {
+                setupSelectionArea(images[index].element);
+            }
+        }
+
+        function setupSelectionArea(img) {
+            selectionContainer.style.display = 'block';
+            selectionImage.src = img.src;
+            
+            selectionArea.style.display = 'none';
+            selection = null;
+            
+            selectionImage.onload = function() {
+                const containerWidth = selectionContainer.clientWidth;
+                const imgWidth = img.naturalWidth;
+                imageScale = containerWidth / imgWidth;
+                
+                if (imageScale > 1) imageScale = 1;
+                
+                selectionImage.style.width = `${imgWidth * imageScale}px`;
+                
+                selectionContainer.style.width = `${imgWidth * imageScale}px`;
+                selectionContainer.style.height = `${img.naturalHeight * imageScale}px`;
+                
+                // Reset event listeners
+                selectionImage.onmousedown = null;
+                document.removeEventListener('mousemove', updateSelection);
+                document.removeEventListener('mouseup', endSelection);
+                
+                // Add new event listeners
+                selectionImage.onmousedown = startSelection;
+                document.addEventListener('mousemove', updateSelection);
+                document.addEventListener('mouseup', endSelection);
+            };
+        }
+
+        function getSelectionCoordinates(e) {
+            const rect = selectionImage.getBoundingClientRect();
+            const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+            const y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+            return { x, y };
+        }
+
+        function startSelection(e) {
+            e.preventDefault();
+            const coords = getSelectionCoordinates(e);
+            startX = coords.x;
+            startY = coords.y;
+            
+            selectionArea.style.left = `${startX}px`;
+            selectionArea.style.top = `${startY}px`;
+            selectionArea.style.width = '0px';
+            selectionArea.style.height = '0px';
+            selectionArea.style.display = 'block';
+            
+            selecting = true;
+        }
+
+        function updateSelection(e) {
+            if (!selecting) return;
+            
+            const coords = getSelectionCoordinates(e);
+            const width = coords.x - startX;
+            const height = coords.y - startY;
+            
+            const left = width < 0 ? startX + width : startX;
+            const top = height < 0 ? startY + height : startY;
+            
+            selectionArea.style.left = `${left}px`;
+            selectionArea.style.top = `${top}px`;
+            selectionArea.style.width = `${Math.abs(width)}px`;
+            selectionArea.style.height = `${Math.abs(height)}px`;
+        }
+
+        function endSelection(e) {
+            if (!selecting) return;
+            selecting = false;
+            
+            const rect = selectionArea.getBoundingClientRect();
+            const imageRect = selectionImage.getBoundingClientRect();
+            
+            selection = {
+                x: (rect.left - imageRect.left) / imageScale,
+                y: (rect.top - imageRect.top) / imageScale,
+                width: rect.width / imageScale,
+                height: rect.height / imageScale
+            };
+            
+            // Enable process button when selection is made
+            processBtn.disabled = false;
+            statusDiv.textContent = 'Область выделена. Готово к обработке.';
+        }
+
+        async function startProcessing() {
+            if (!selection || images.length === 0) {
+                statusDiv.textContent = 'Выделите область на изображении';
+                statusDiv.style.color = 'red';
+                return;
+            }
+            
+            if (selection.width < 10 || selection.height < 10) {
+                statusDiv.textContent = 'Выделенная область слишком мала';
+                statusDiv.style.color = 'red';
+                return;
+            }
+            
+            if (processing) return;
+            processing = true;
+            processBtn.disabled = true;
+            results = [];
+            resultsDiv.textContent = '';
+            statusDiv.textContent = 'Начата обработка изображений...';
+            statusDiv.style.color = '';
+            
+            try {
+                for (let i = 0; i < images.length; i++) {
+                    currentImageIndex = i;
+                    progressInfo.textContent = `Обработка ${i + 1} из ${images.length}...`;
+                    statusDiv.textContent = `Обработка изображения ${i + 1} из ${images.length}`;
+                    
+                    try {
+                        const result = await processImage(images[i]);
+                        results.push(result);
+                        resultsDiv.textContent += `${result}\n`;
+                        resultsDiv.scrollTop = resultsDiv.scrollHeight;
+                    } catch (error) {
+                        console.error(`Ошибка обработки изображения ${i + 1}:`, error);
+                        results.push(`Ошибка обработки изображения ${i + 1}: ${error.message}`);
+                        resultsDiv.textContent += `Ошибка обработки изображения ${i + 1}: ${error.message}\n`;
+                    }
+                    
+                    // Small delay to prevent UI freezing
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+                
+                progressInfo.textContent = `Обработано ${images.length} изображений`;
+                statusDiv.textContent = `Готово. Обработано ${images.length} изображений`;
+            } catch (error) {
+                console.error('Ошибка в startProcessing:', error);
+                statusDiv.textContent = `Ошибка обработки: ${error.message}`;
+                statusDiv.style.color = 'red';
+            } finally {
+                processBtn.disabled = false;
+                processing = false;
+            }
+        }
+
+        async function processImage(image) {
+            if (!worker) {
+                await init(); // Try to reinitialize worker if it's null
+                if (!worker) {
+                    throw new Error('Worker не инициализирован');
+                }
+            }
+
+            try {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                canvas.width = image.element.naturalWidth;
+                canvas.height = image.element.naturalHeight;
+                
+                ctx.save();
+                if (image.rotation !== 0) {
+                    ctx.translate(canvas.width / 2, canvas.height / 2);
+                    ctx.rotate((image.rotation * Math.PI) / 180);
+                    ctx.translate(-canvas.width / 2, -canvas.height / 2);
+                }
+                
+                ctx.drawImage(image.element, 0, 0);
+                ctx.restore();
+                
+                const selectionCanvas = document.createElement('canvas');
+                const selectionCtx = selectionCanvas.getContext('2d');
+                
+                selectionCanvas.width = selection.width;
+                selectionCanvas.height = selection.height;
+                
+                selectionCtx.drawImage(
+                    canvas,
+                    selection.x,
+                    selection.y,
+                    selection.width,
+                    selection.height,
+                    0,
+                    0,
+                    selection.width,
+                    selection.height
+                );
+                
+                // Convert canvas to image data URL
+                const imageDataUrl = selectionCanvas.toDataURL('image/jpeg', 0.8);
+                
+                // Use Tesseract.js recognize with image URL
+                const { data: { text } } = await worker.recognize(imageDataUrl);
+                
+                const lines = text.split('\n')
+                    .map(line => line.trim())
+                    .filter(line => line.length > 0);
+                
+                if (lines.length === 0) return "Не удалось распознать текст";
+                
+                const name = lines[0];
+                const address = lines.slice(1).join(' ');
+                
+                return `${name}\t${address}`;
+            } catch (error) {
+                console.error('Ошибка в processImage:', error);
+                throw new Error('Ошибка распознавания текста: ' + error.message);
+            }
+        }
+
+        function copyResults() {
+            const text = results.join('\n');
+            navigator.clipboard.writeText(text).then(() => {
+                statusDiv.textContent = 'Текст скопирован в буфер обмена';
+                statusDiv.style.color = 'green';
+                setTimeout(() => {
+                    statusDiv.textContent = `Готово. Обработано ${images.length} изображений`;
+                    statusDiv.style.color = '';
+                }, 2000);
+            }).catch(err => {
+                statusDiv.textContent = 'Ошибка при копировании';
+                statusDiv.style.color = 'red';
+            });
+        }
+
+        function copyResultsForExcel() {
+            const text = results.join('\n');
+            navigator.clipboard.writeText(text).then(() => {
+                statusDiv.textContent = 'Текст скопирован для Excel';
+                statusDiv.style.color = 'green';
+                setTimeout(() => {
+                    statusDiv.textContent = `Готово. Обработано ${images.length} изображений`;
+                    statusDiv.style.color = '';
+                }, 2000);
+            }).catch(err => {
+                statusDiv.textContent = 'Ошибка при копировании';
+                statusDiv.style.color = 'red';
+            });
+        }
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
