@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Обработка конвертов</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
@@ -19,6 +19,7 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
         }
 
         body {
@@ -27,6 +28,8 @@
             color: var(--text-color);
             line-height: 1.6;
             padding: 20px;
+            overflow-x: hidden;
+            touch-action: pan-y;
         }
 
         .container {
@@ -144,12 +147,17 @@
             display: inline-block;
             max-width: 100%;
             margin-top: 20px;
+            touch-action: none;
         }
 
         #selection-image {
             max-width: 100%;
             display: block;
             cursor: crosshair;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
         }
 
         .processing-controls {
@@ -232,6 +240,8 @@
             font-family: monospace;
             white-space: pre-wrap;
             background: #f9f9f9;
+            overflow-y: auto;
+            max-height: 300px;
         }
 
         .status {
@@ -253,6 +263,29 @@
                 width: 100%;
                 height: auto;
                 max-height: 300px;
+            }
+            
+            .result-actions {
+                flex-direction: column;
+            }
+            
+            .result-actions button {
+                width: 100%;
+            }
+            
+            body {
+                padding: 10px;
+                touch-action: pan-y;
+            }
+            
+            .container {
+                gap: 15px;
+            }
+            
+            .upload-section,
+            .processing-section,
+            .results-section {
+                padding: 15px;
             }
         }
     </style>
@@ -284,6 +317,10 @@
                 <button id="process-btn" class="process-btn" disabled>Начать обработку</button>
                 <div class="progress-info" id="progress-info"></div>
             </div>
+
+            <button class="process-btn" id="startSelection">Начать выделение</button>
+            <button class="process-btn" id="endSelection" style="display:none;">Завершить выделение</button>
+
         </div>
         
         <div class="results-section">
@@ -326,12 +363,10 @@
             try {
                 statusDiv.textContent = 'Инициализация системы распознавания...';
                 
-                // Terminate any existing worker
                 if (worker) {
                     await worker.terminate();
                 }
                 
-                // Initialize new worker
                 worker = await Tesseract.createWorker({
                     logger: m => console.log(m),
                     errorHandler: err => console.error(err)
@@ -354,6 +389,20 @@
             processBtn.addEventListener('click', startProcessing);
             copyBtn.addEventListener('click', copyResults);
             copyExcelBtn.addEventListener('click', copyResultsForExcel);
+            
+            // Добавляем touch-обработчики для мобильных устройств
+            processBtn.addEventListener('touchend', function(e) {
+                e.preventDefault();
+                startProcessing();
+            });
+            copyBtn.addEventListener('touchend', function(e) {
+                e.preventDefault();
+                copyResults();
+            });
+            copyExcelBtn.addEventListener('touchend', function(e) {
+                e.preventDefault();
+                copyResultsForExcel();
+            });
         }
 
         function handleFileSelect(e) {
@@ -403,7 +452,6 @@
                 reader.readAsDataURL(file);
             });
             
-            // Enable process button when files are loaded
             processBtn.disabled = files.length === 0;
         }
 
@@ -419,11 +467,19 @@
             
             const rotateLeftBtn = document.createElement('button');
             rotateLeftBtn.textContent = '↶';
-            rotateLeftBtn.onclick = () => rotateImage(index, -90);
+            rotateLeftBtn.addEventListener('click', () => rotateImage(index, -90));
+            rotateLeftBtn.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                rotateImage(index, -90);
+            });
             
             const rotateRightBtn = document.createElement('button');
             rotateRightBtn.textContent = '↷';
-            rotateRightBtn.onclick = () => rotateImage(index, 90);
+            rotateRightBtn.addEventListener('click', () => rotateImage(index, 90));
+            rotateRightBtn.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                rotateImage(index, 90);
+            });
             
             controls.appendChild(rotateLeftBtn);
             controls.appendChild(rotateRightBtn);
@@ -445,6 +501,60 @@
             }
         }
 
+        let selectionMode = false;
+let selectionActive = false; // Флаг, идет ли выделение прямо сейчас
+
+document.getElementById('startSelection').addEventListener('click', () => {
+    selectionMode = true;
+    selectionActive = false; // Только начали выделение, но не двигаем его
+    document.getElementById('startSelection').style.display = 'none';
+    document.getElementById('endSelection').style.display = 'block';
+});
+
+document.getElementById('endSelection').addEventListener('click', () => {
+    selectionMode = false;
+    selectionActive = false;
+    document.getElementById('startSelection').style.display = 'block';
+    document.getElementById('endSelection').style.display = 'none';
+});
+
+function handleTouchStart(e) {
+    if (!selectionMode) return; // Если не в режиме выделения - не блокируем
+    if (e.cancelable) e.preventDefault();
+
+    selectionActive = true; // Началось выделение
+
+    const touch = e.touches[0];
+    const mouseEvent = {
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        touches: e.touches
+    };
+    startSelection(mouseEvent);
+}
+
+function handleTouchMove(e) {
+    if (!selectionActive) return; // Если не двигаем выделение - не блокируем скролл
+    if (e.cancelable) e.preventDefault();
+
+    const touch = e.touches[0];
+    const mouseEvent = {
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        touches: e.touches
+    };
+    updateSelection(mouseEvent);
+}
+
+function handleTouchEnd(e) {
+    if (!selectionActive) return; // Если выделения не было - не блокируем
+    if (e.cancelable) e.preventDefault();
+    
+    selectionActive = false; // Завершаем выделение, разрешаем скролл
+    endSelection();
+}
+
+
         function setupSelectionArea(img) {
             selectionContainer.style.display = 'block';
             selectionImage.src = img.src;
@@ -464,27 +574,42 @@
                 selectionContainer.style.width = `${imgWidth * imageScale}px`;
                 selectionContainer.style.height = `${img.naturalHeight * imageScale}px`;
                 
-                // Reset event listeners
-                selectionImage.onmousedown = null;
+                // Удаляем старые обработчики
+                selectionImage.removeEventListener('mousedown', startSelection);
+                selectionImage.removeEventListener('touchstart', handleTouchStart);
                 document.removeEventListener('mousemove', updateSelection);
+                document.removeEventListener('touchmove', handleTouchMove);
                 document.removeEventListener('mouseup', endSelection);
+                document.removeEventListener('touchend', handleTouchEnd);
                 
-                // Add new event listeners
-                selectionImage.onmousedown = startSelection;
+                // Добавляем новые обработчики
+                selectionImage.addEventListener('mousedown', startSelection);
+                selectionImage.addEventListener('touchstart', handleTouchStart, { passive: false });
                 document.addEventListener('mousemove', updateSelection);
+                document.addEventListener('touchmove', handleTouchMove, { passive: false });
                 document.addEventListener('mouseup', endSelection);
+                document.addEventListener('touchend', handleTouchEnd);
             };
         }
 
         function getSelectionCoordinates(e) {
             const rect = selectionImage.getBoundingClientRect();
-            const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-            const y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+            let clientX, clientY;
+            
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+            
+            const x = Math.max(0, Math.min(clientX - rect.left, rect.width));
+            const y = Math.max(0, Math.min(clientY - rect.top, rect.height));
             return { x, y };
         }
 
         function startSelection(e) {
-            e.preventDefault();
             const coords = getSelectionCoordinates(e);
             startX = coords.x;
             startY = coords.y;
@@ -514,7 +639,7 @@
             selectionArea.style.height = `${Math.abs(height)}px`;
         }
 
-        function endSelection(e) {
+        function endSelection() {
             if (!selecting) return;
             selecting = false;
             
@@ -528,7 +653,6 @@
                 height: rect.height / imageScale
             };
             
-            // Enable process button when selection is made
             processBtn.disabled = false;
             statusDiv.textContent = 'Область выделена. Готово к обработке.';
         }
@@ -571,7 +695,6 @@
                         resultsDiv.textContent += `Ошибка обработки изображения ${i + 1}: ${error.message}\n`;
                     }
                     
-                    // Small delay to prevent UI freezing
                     await new Promise(resolve => setTimeout(resolve, 100));
                 }
                 
@@ -589,7 +712,7 @@
 
         async function processImage(image) {
             if (!worker) {
-                await init(); // Try to reinitialize worker if it's null
+                await init();
                 if (!worker) {
                     throw new Error('Worker не инициализирован');
                 }
@@ -630,10 +753,7 @@
                     selection.height
                 );
                 
-                // Convert canvas to image data URL
                 const imageDataUrl = selectionCanvas.toDataURL('image/jpeg', 0.8);
-                
-                // Use Tesseract.js recognize with image URL
                 const { data: { text } } = await worker.recognize(imageDataUrl);
                 
                 const lines = text.split('\n')
